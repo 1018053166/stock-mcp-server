@@ -26,36 +26,44 @@
 
 ## 🚀 快速开始
 
-### 1. 安装依赖
+### 方式一：直接使用 npx（推荐）
 
-```bash
-npm install
-```
+无需安装，直接在MCP客户端配置中使用：
 
-### 2. 启动服务
-
-```bash
-npm start
-```
-
-### 3. 配置MCP客户端
-
-将以下配置添加到MCP客户端配置文件中（如Claude Desktop的`claude_desktop_config.json`）：
-
-**方式一：使用npm启动（推荐）**
 ```json
 {
   "mcpServers": {
     "stock-server": {
-      "command": "npm",
-      "args": ["start"],
-      "cwd": "/path/to/your/stock-mcp-server"
+      "command": "npx",
+      "args": ["-y", "stock-mcp-server"]
     }
   }
 }
 ```
 
-**方式二：直接使用node**
+### 方式二：本地安装开发
+
+#### 1. 克隆项目
+
+```bash
+git clone https://github.com/1018053166/stock-mcp-server.git
+cd stock-mcp-server
+```
+
+#### 2. 安装依赖
+
+```bash
+npm install
+```
+
+#### 3. 启动服务
+
+```bash
+npm start
+```
+
+#### 4. 配置MCP客户端
+
 ```json
 {
   "mcpServers": {
