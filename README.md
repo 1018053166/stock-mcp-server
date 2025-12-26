@@ -40,18 +40,35 @@ npm start
 
 ### 3. 配置MCP客户端
 
-将以下配置添加到MCP客户端配置文件（如Claude Desktop的`claude_desktop_config.json`）：
+将以下配置添加到MCP客户端配置文件中（如Claude Desktop的`claude_desktop_config.json`）：
 
+**方式一：使用npm启动（推荐）**
+```json
+{
+  "mcpServers": {
+    "stock-server": {
+      "command": "npm",
+      "args": ["start"],
+      "cwd": "/path/to/your/stock-mcp-server"
+    }
+  }
+}
+```
+
+**方式二：直接使用node**
 ```json
 {
   "mcpServers": {
     "stock-server": {
       "command": "node",
-      "args": ["/Users/work/projects/leecode/src/index.js"]
+      "args": ["src/index.js"],
+      "cwd": "/path/to/your/stock-mcp-server"
     }
   }
 }
 ```
+
+> ⚠️ 注意：请将 `/path/to/your/stock-mcp-server` 替换为你的实际项目路径
 
 ## 📚 API工具列表
 
