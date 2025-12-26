@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "stock-server": {
+      "command": "node",
+      "args": ["/Users/work/projects/leecode/src/index.js"],
+      "env": {}
+    }
+  }
+}
