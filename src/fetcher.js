@@ -10,6 +10,8 @@ export class StockDataFetcher {
     this.klineUrl = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
     this.rankUrl = 'https://push2.eastmoney.com/api/qt/clist/get';
     this.holderUrl = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
+    this.flowUrl = 'https://push2.eastmoney.com/api/qt/stock/fflow/kline/get';
+    this.financeUrl = 'https://datacenter-web.eastmoney.com/api/data/v1/get';
   }
 
   /**
@@ -500,5 +502,351 @@ export class StockDataFetcher {
     } catch (error) {
       throw new Error(`获取股票 ${stockCode} 股东趋势失败: ${error.message}`);
     }
+  }
+
+  /**
+   * 获取资金流向数据
+   * @param {string} stockCode - 股票代码
+   * @returns {Promise<Object>} 资金流向数据
+   */
+  async getMoneyFlow(stockCode) {
+    try {
+      const secid = this.formatStockCode(stockCode);
+      const params = {
+        lmt: 0,
+        klt: 101,
+        secid: secid,
+        fields1: 'f1,f2,f3,f7',
+        fields2: 'f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65',
+        ut: 'fa5fd1943c7b386f172d6893dbfba10b'
+      };
+
+      const response = await axios.get(this.flowUrl, { params, timeout: 10000 });
+      
+      if (response.data && response.data.data) {
+        const flowData = response.data.data;
+        
+        // 解析最新一天的资金流向
+        if (flowData.klines && flowData.klines.length > 0) {
+          const latest = flowData.klines[flowData.klines.length - 1].split(',');
+          
+          return {
+            stockCode: stockCode,
+            stockName: flowData.name,
+            date: latest[0],
+            mainNetInflow: parseFloat(latest[1]) || 0,  // 主力净流入
+            mainNetInflowRate: parseFloat(latest[2]) || 0,  // 主力净流入占比
+            superLargeNetInflow: parseFloat(latest[3]) || 0,  // 超大单净流入
+            superLargeNetInflowRate: parseFloat(latest[4]) || 0,
+            largeNetInflow: parseFloat(latest[5]) || 0,  // 大单净流入
+            largeNetInflowRate: parseFloat(latest[6]) || 0,
+            mediumNetInflow: parseFloat(latest[7]) || 0,  // 中单净流入
+            mediumNetInflowRate: parseFloat(latest[8]) || 0,
+            smallNetInflow: parseFloat(latest[9]) || 0,  // 小单净流入
+            smallNetInflowRate: parseFloat(latest[10]) || 0,
+            updateTime: new Date().toISOString()
+          };
+        }
+      }
+      
+      return { stockCode, message: '暂无资金流向数据' };
+    } catch (error) {
+      throw new Error(`获取股票 ${stockCode} 资金流向失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 获取财务数据
+   * @param {string} stockCode - 股票代码
+   * @returns {Promise<Object>} 财务数据
+   */
+  async getFinanceData(stockCode) {
+    try {
+      const params = {
+        reportName: 'RPT_LICO_FN_CPD',
+        columns: 'ALL',
+        filter: `(SECURITY_CODE="${stockCode}")`,
+        pageNumber: '1',
+        pageSize: '4',
+        sortTypes: '-1',
+        sortColumns: 'REPORT_DATE',
+        source: 'WEB',
+        client: 'WEB'
+      };
+
+      const response = await axios.get(this.financeUrl, { params, timeout: 10000 });
+      
+      if (response.data && response.data.result && response.data.result.data) {
+        const data = response.data.result.data;
+        
+        return {
+          stockCode: stockCode,
+          financeData: data.map(item => ({
+            reportDate: item.REPORT_DATE,
+            reportType: item.REPORT_TYPE_NAME,
+            revenue: item.TOTAL_OPERATE_INCOME,  // 营业总收入
+            netProfit: item.PARENT_NETPROFIT,  // 净利润
+            netProfitYoY: item.PARENT_NETPROFIT_YOY,  // 净利润同比增长
+            roe: item.WEIGHTAVG_ROE,  // 净资产收益率
+            grossMargin: item.SALES_GROSS_PROFIT_RATIO,  // 销售毛利率
+            netMargin: item.SALES_NET_PROFIT_RATIO,  // 销售净利率
+            eps: item.BASIC_EPS,  // 每股收益
+            bps: item.BPS,  // 每股净资产
+            totalAssets: item.TOTAL_ASSETS,  // 总资产
+            totalLiability: item.TOTAL_LIABILITIES  // 总负债
+          })),
+          latestReport: data[0] ? {
+            date: data[0].REPORT_DATE,
+            revenue: data[0].TOTAL_OPERATE_INCOME,
+            netProfit: data[0].PARENT_NETPROFIT,
+            roe: data[0].WEIGHTAVG_ROE,
+            eps: data[0].BASIC_EPS
+          } : null,
+          updateTime: new Date().toISOString()
+        };
+      }
+      
+      return { stockCode, financeData: [], message: '暂无财务数据' };
+    } catch (error) {
+      throw new Error(`获取股票 ${stockCode} 财务数据失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 计算技术指标
+   * @param {string} stockCode - 股票代码
+   * @param {number} days - 天数
+   * @returns {Promise<Object>} 技术指标数据
+   */
+  async getTechnicalIndicators(stockCode, days = 60) {
+    try {
+      // 获取K线数据
+      const klineData = await this.getKlineData(stockCode, '101', days);
+      
+      if (!klineData.klines || klineData.klines.length === 0) {
+        return { stockCode, message: '数据不足，无法计算技术指标' };
+      }
+
+      const closes = klineData.klines.map(k => k.close);
+      const highs = klineData.klines.map(k => k.high);
+      const lows = klineData.klines.map(k => k.low);
+      
+      // 计算MA均线
+      const ma5 = this.calculateMA(closes, 5);
+      const ma10 = this.calculateMA(closes, 10);
+      const ma20 = this.calculateMA(closes, 20);
+      const ma60 = this.calculateMA(closes, 60);
+      
+      // 计算MACD
+      const macd = this.calculateMACD(closes);
+      
+      // 计算RSI
+      const rsi = this.calculateRSI(closes, 14);
+      
+      // 计算KDJ
+      const kdj = this.calculateKDJ(highs, lows, closes, 9);
+      
+      // 计算BOLL
+      const boll = this.calculateBOLL(closes, 20);
+
+      return {
+        stockCode: stockCode,
+        stockName: klineData.stockName,
+        currentPrice: closes[closes.length - 1],
+        indicators: {
+          ma: {
+            ma5: ma5[ma5.length - 1],
+            ma10: ma10[ma10.length - 1],
+            ma20: ma20[ma20.length - 1],
+            ma60: ma60[ma60.length - 1]
+          },
+          macd: {
+            dif: macd.dif[macd.dif.length - 1],
+            dea: macd.dea[macd.dea.length - 1],
+            macd: macd.macd[macd.macd.length - 1]
+          },
+          rsi: {
+            rsi14: rsi[rsi.length - 1]
+          },
+          kdj: {
+            k: kdj.k[kdj.k.length - 1],
+            d: kdj.d[kdj.d.length - 1],
+            j: kdj.j[kdj.j.length - 1]
+          },
+          boll: {
+            upper: boll.upper[boll.upper.length - 1],
+            middle: boll.middle[boll.middle.length - 1],
+            lower: boll.lower[boll.lower.length - 1]
+          }
+        },
+        updateTime: new Date().toISOString()
+      };
+    } catch (error) {
+      throw new Error(`计算股票 ${stockCode} 技术指标失败: ${error.message}`);
+    }
+  }
+
+  /**
+   * 计算移动平均线MA
+   * @param {Array} data - 价格数组
+   * @param {number} period - 周期
+   * @returns {Array} MA值数组
+   */
+  calculateMA(data, period) {
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      if (i < period - 1) {
+        result.push(null);
+      } else {
+        const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+        result.push(parseFloat((sum / period).toFixed(2)));
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 计算MACD指标
+   * @param {Array} closes - 收盘价数组
+   * @returns {Object} MACD数据
+   */
+  calculateMACD(closes) {
+    const ema12 = this.calculateEMA(closes, 12);
+    const ema26 = this.calculateEMA(closes, 26);
+    
+    const dif = ema12.map((val, i) => val && ema26[i] ? parseFloat((val - ema26[i]).toFixed(2)) : null);
+    const dea = this.calculateEMA(dif.filter(v => v !== null), 9);
+    
+    // 补齐dea数组长度
+    const fullDea = new Array(dif.length - dea.length).fill(null).concat(dea);
+    
+    const macd = dif.map((val, i) => {
+      return val && fullDea[i] ? parseFloat((2 * (val - fullDea[i])).toFixed(2)) : null;
+    });
+
+    return { dif, dea: fullDea, macd };
+  }
+
+  /**
+   * 计算指数移动平均EMA
+   * @param {Array} data - 数据数组
+   * @param {number} period - 周期
+   * @returns {Array} EMA值数组
+   */
+  calculateEMA(data, period) {
+    const result = [];
+    const multiplier = 2 / (period + 1);
+    
+    // 第一个EMA值用SMA
+    let ema = data.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    result.push(parseFloat(ema.toFixed(2)));
+    
+    for (let i = period; i < data.length; i++) {
+      ema = (data[i] - ema) * multiplier + ema;
+      result.push(parseFloat(ema.toFixed(2)));
+    }
+    
+    return result;
+  }
+
+  /**
+   * 计算RSI相对强弱指标
+   * @param {Array} closes - 收盘价数组
+   * @param {number} period - 周期
+   * @returns {Array} RSI值数组
+   */
+  calculateRSI(closes, period = 14) {
+    const result = [];
+    const gains = [];
+    const losses = [];
+    
+    for (let i = 1; i < closes.length; i++) {
+      const change = closes[i] - closes[i - 1];
+      gains.push(change > 0 ? change : 0);
+      losses.push(change < 0 ? -change : 0);
+    }
+    
+    for (let i = 0; i < gains.length; i++) {
+      if (i < period - 1) {
+        result.push(null);
+      } else {
+        const avgGain = gains.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
+        const avgLoss = losses.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period;
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        const rsi = 100 - (100 / (1 + rs));
+        result.push(parseFloat(rsi.toFixed(2)));
+      }
+    }
+    
+    return [null, ...result];
+  }
+
+  /**
+   * 计算KDJ指标
+   * @param {Array} highs - 最高价数组
+   * @param {Array} lows - 最低价数组
+   * @param {Array} closes - 收盘价数组
+   * @param {number} period - 周期
+   * @returns {Object} KDJ数据
+   */
+  calculateKDJ(highs, lows, closes, period = 9) {
+    const rsv = [];
+    const k = [];
+    const d = [];
+    const j = [];
+    
+    for (let i = 0; i < closes.length; i++) {
+      if (i < period - 1) {
+        rsv.push(null);
+        k.push(50);
+        d.push(50);
+        j.push(50);
+      } else {
+        const periodHigh = Math.max(...highs.slice(i - period + 1, i + 1));
+        const periodLow = Math.min(...lows.slice(i - period + 1, i + 1));
+        const rsvValue = periodHigh === periodLow ? 0 : 
+          ((closes[i] - periodLow) / (periodHigh - periodLow)) * 100;
+        rsv.push(rsvValue);
+        
+        const kValue = (2 * k[i - 1] + rsvValue) / 3;
+        const dValue = (2 * d[i - 1] + kValue) / 3;
+        const jValue = 3 * kValue - 2 * dValue;
+        
+        k.push(parseFloat(kValue.toFixed(2)));
+        d.push(parseFloat(dValue.toFixed(2)));
+        j.push(parseFloat(jValue.toFixed(2)));
+      }
+    }
+    
+    return { k, d, j };
+  }
+
+  /**
+   * 计算布林带BOLL
+   * @param {Array} closes - 收盘价数组
+   * @param {number} period - 周期
+   * @returns {Object} BOLL数据
+   */
+  calculateBOLL(closes, period = 20) {
+    const middle = this.calculateMA(closes, period);
+    const upper = [];
+    const lower = [];
+    
+    for (let i = 0; i < closes.length; i++) {
+      if (i < period - 1) {
+        upper.push(null);
+        lower.push(null);
+      } else {
+        const slice = closes.slice(i - period + 1, i + 1);
+        const mean = middle[i];
+        const variance = slice.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / period;
+        const std = Math.sqrt(variance);
+        
+        upper.push(parseFloat((mean + 2 * std).toFixed(2)));
+        lower.push(parseFloat((mean - 2 * std).toFixed(2)));
+      }
+    }
+    
+    return { upper, middle, lower };
   }
 }

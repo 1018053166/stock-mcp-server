@@ -202,6 +202,53 @@ class StockMCPServer {
             required: ['stockCode'],
           },
         },
+        {
+          name: 'get_money_flow',
+          description: '获取资金流向数据(主力资金、超大单、大单、中单、小单)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              stockCode: {
+                type: 'string',
+                description: '股票代码',
+              },
+            },
+            required: ['stockCode'],
+          },
+        },
+        {
+          name: 'get_finance_data',
+          description: '获取财务数据(营收、净利润、ROE等核心指标)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              stockCode: {
+                type: 'string',
+                description: '股票代码',
+              },
+            },
+            required: ['stockCode'],
+          },
+        },
+        {
+          name: 'get_technical_indicators',
+          description: '获取技术指标(MA均线、MACD、RSI、KDJ、BOLL)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              stockCode: {
+                type: 'string',
+                description: '股票代码',
+              },
+              days: {
+                type: 'number',
+                description: '计算天数(默认60天)',
+                default: 60,
+              },
+            },
+            required: ['stockCode'],
+          },
+        },
       ],
     }));
 
@@ -240,6 +287,15 @@ class StockMCPServer {
 
           case 'get_shareholder_trend':
             return await this.handleGetShareholderTrend(args);
+
+          case 'get_money_flow':
+            return await this.handleGetMoneyFlow(args);
+
+          case 'get_finance_data':
+            return await this.handleGetFinanceData(args);
+
+          case 'get_technical_indicators':
+            return await this.handleGetTechnicalIndicators(args);
 
           default:
             throw new Error(`未知工具: ${name}`);
@@ -415,6 +471,57 @@ class StockMCPServer {
   async handleGetShareholderTrend(args) {
     const { stockCode } = args;
     const data = await this.fetcher.getShareholderTrend(stockCode);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(data, null, 2),
+        },
+      ],
+    };
+  }
+
+  /**
+   * 处理获取资金流向
+   */
+  async handleGetMoneyFlow(args) {
+    const { stockCode } = args;
+    const data = await this.fetcher.getMoneyFlow(stockCode);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(data, null, 2),
+        },
+      ],
+    };
+  }
+
+  /**
+   * 处理获取财务数据
+   */
+  async handleGetFinanceData(args) {
+    const { stockCode } = args;
+    const data = await this.fetcher.getFinanceData(stockCode);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(data, null, 2),
+        },
+      ],
+    };
+  }
+
+  /**
+   * 处理获取技术指标
+   */
+  async handleGetTechnicalIndicators(args) {
+    const { stockCode, days = 60 } = args;
+    const data = await this.fetcher.getTechnicalIndicators(stockCode, days);
 
     return {
       content: [
