@@ -249,6 +249,20 @@ class StockMCPServer {
             required: ['stockCode'],
           },
         },
+        {
+          name: 'get_shareholder_structure',
+          description: '获取股东结构数据(散户占比、散户市值比、机构占比等)',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              stockCode: {
+                type: 'string',
+                description: '股票代码',
+              },
+            },
+            required: ['stockCode'],
+          },
+        },
       ],
     }));
 
@@ -296,6 +310,9 @@ class StockMCPServer {
 
           case 'get_technical_indicators':
             return await this.handleGetTechnicalIndicators(args);
+
+          case 'get_shareholder_structure':
+            return await this.handleGetShareholderStructure(args);
 
           default:
             throw new Error(`未知工具: ${name}`);
@@ -522,6 +539,23 @@ class StockMCPServer {
   async handleGetTechnicalIndicators(args) {
     const { stockCode, days = 60 } = args;
     const data = await this.fetcher.getTechnicalIndicators(stockCode, days);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(data, null, 2),
+        },
+      ],
+    };
+  }
+
+  /**
+   * 处理获取股东结构
+   */
+  async handleGetShareholderStructure(args) {
+    const { stockCode } = args;
+    const data = await this.fetcher.getShareholderStructure(stockCode);
 
     return {
       content: [

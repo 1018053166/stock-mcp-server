@@ -613,6 +613,66 @@ export class StockDataFetcher {
   }
 
   /**
+   * 获取股东结构数据(散户占比、机构占比等)
+   * @param {string} stockCode - 股票代码
+   * @returns {Promise<Object>} 股东结构数据
+   */
+  async getShareholderStructure(stockCode) {
+    try {
+      const params = {
+        reportName: 'RPT_F10_EH_HOLDERSTYPE',
+        columns: 'ALL',
+        filter: `(SECUCODE="${stockCode}")`,
+        pageNumber: '1',
+        pageSize: '10',
+        sortTypes: '-1',
+        sortColumns: 'END_DATE',
+        source: 'WEB',
+        client: 'WEB'
+      };
+
+      const response = await axios.get(this.holderUrl, { params, timeout: 10000 });
+      
+      if (response.data && response.data.result && response.data.result.data) {
+        const data = response.data.result.data;
+        
+        return {
+          stockCode: stockCode,
+          shareholderStructure: data.map(item => ({
+            endDate: item.END_DATE,
+            totalHolderNum: item.TOTAL_HOLDER_NUM,  // 总股东数
+            avgHoldingAmount: item.AVG_HOLD_AMT,  // 户均持股金额
+            // 散户数据
+            retailHolderNum: item.FREE_HOLDER_NUM,  // 散户数量
+            retailHolderRatio: item.FREE_HOLDER_NUM_RATIO,  // 散户占比(%)
+            retailHoldingAmount: item.FREE_HOLD_AMT,  // 散户持股市值
+            retailHoldingAmountRatio: item.FREE_HOLD_AMT_RATIO,  // 散户持股市值占比(%)
+            // 机构数据
+            institutionHolderNum: item.ORG_HOLDER_NUM,  // 机构数量
+            institutionHolderRatio: item.ORG_HOLDER_NUM_RATIO,  // 机构占比(%)
+            institutionHoldingAmount: item.ORG_HOLD_AMT,  // 机构持股市值
+            institutionHoldingAmountRatio: item.ORG_HOLD_AMT_RATIO,  // 机构持股市值占比(%)
+          })),
+          latestData: data[0] ? {
+            endDate: data[0].END_DATE,
+            retailHolderRatio: data[0].FREE_HOLDER_NUM_RATIO,  // 散户占比
+            retailHoldingAmountRatio: data[0].FREE_HOLD_AMT_RATIO,  // 散户市值占比
+            institutionHolderRatio: data[0].ORG_HOLDER_NUM_RATIO,
+            institutionHoldingAmountRatio: data[0].ORG_HOLD_AMT_RATIO,
+            totalHolderNum: data[0].TOTAL_HOLDER_NUM,
+            avgHoldingAmount: data[0].AVG_HOLD_AMT
+          } : null,
+          updateTime: new Date().toISOString()
+        };
+      }
+      
+      return { stockCode, shareholderStructure: [], message: '暂无股东结构数据' };
+    } catch (error) {
+      throw new Error(`获取股票 ${stockCode} 股东结构数据失败: ${error.message}`);
+    }
+  }
+
+  /**
    * 计算技术指标
    * @param {string} stockCode - 股票代码
    * @param {number} days - 天数

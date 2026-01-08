@@ -23,6 +23,7 @@
 - ✅ 股东人数历史变化
 - ✅ 十大流通股东
 - ✅ 股东增长趋势分析
+- ✅ 股东结构分析（散户占比、散户市值比）
 
 ## 🚀 快速开始
 
@@ -206,6 +207,77 @@ npm start
 }
 ```
 
+### 11. get_money_flow
+获取资金流向数据
+
+**参数：**
+- `stockCode` (string): 股票代码
+
+**返回数据：**
+```json
+{
+  "stockCode": "000001",
+  "mainNetInflow": 123456.78,
+  "mainNetInflowRate": 5.23,
+  "superLargeNetInflow": 80000.00,
+  "largeNetInflow": 43456.78,
+  "mediumNetInflow": -20000.00,
+  "smallNetInflow": -15000.00
+}
+```
+
+### 12. get_finance_data
+获取财务数据
+
+**参数：**
+- `stockCode` (string): 股票代码
+
+**返回数据：**包含营收、净利润、ROE等核心财务指标
+
+### 13. get_technical_indicators
+获取技术指标
+
+**参数：**
+- `stockCode` (string): 股票代码
+- `days` (number): 计算天数，默认60
+
+**返回数据：**包含MA均线、MACD、RSI、KDJ、BOLL等技术指标
+
+### 14. get_shareholder_structure
+获取股东结构数据（散户占比、散户市值比）
+
+**参数：**
+- `stockCode` (string): 股票代码
+
+**返回数据：**
+```json
+{
+  "stockCode": "000001",
+  "latestData": {
+    "endDate": "2024-03-31",
+    "retailHolderRatio": 99.85,
+    "retailHoldingAmountRatio": 23.45,
+    "institutionHolderRatio": 0.15,
+    "institutionHoldingAmountRatio": 76.55,
+    "totalHolderNum": 685234,
+    "avgHoldingAmount": 45678.90
+  },
+  "shareholderStructure": [
+    {
+      "endDate": "2024-03-31",
+      "retailHolderNum": 684200,
+      "retailHolderRatio": 99.85,
+      "retailHoldingAmount": 7890000000,
+      "retailHoldingAmountRatio": 23.45,
+      "institutionHolderNum": 1034,
+      "institutionHolderRatio": 0.15,
+      "institutionHoldingAmount": 25670000000,
+      "institutionHoldingAmountRatio": 76.55
+    }
+  ]
+}
+```
+
 ## 🛠️ 技术栈
 
 - **Node.js** - ES Modules
@@ -244,6 +316,12 @@ leecode/
 ```
 
 ## 🔄 更新日志
+
+### v1.1.0 (2026-01-08)
+- ✅ 新增股东结构分析（散户占比、散户市值比）
+- ✅ 新增资金流向数据
+- ✅ 新增财务数据查询
+- ✅ 新增技术指标计算
 
 ### v1.0.0 (2025-12-26)
 - ✅ 实现基础实时行情查询
