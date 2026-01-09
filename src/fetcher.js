@@ -359,10 +359,12 @@ export class StockDataFetcher {
    */
   async getShareholderCount(stockCode) {
     try {
+      const secucode = this.convertToSecucode(stockCode);
+      
       const params = {
         reportName: 'RPT_F10_EH_HOLDERNUM',
         columns: 'ALL',
-        filter: `(SECUCODE="${stockCode}")`,
+        filter: `(SECUCODE="${secucode}")`,
         pageNumber: '1',
         pageSize: '20',
         sortTypes: '-1',
@@ -408,10 +410,12 @@ export class StockDataFetcher {
    */
   async getTopTenHolders(stockCode) {
     try {
+      const secucode = this.convertToSecucode(stockCode);
+      
       const params = {
         reportName: 'RPT_F10_EH_FREEHOLDERS',
         columns: 'ALL',
-        filter: `(SECUCODE="${stockCode}")`,
+        filter: `(SECUCODE="${secucode}")`,
         pageNumber: '1',
         pageSize: '10',
         sortTypes: '-1,-1',
@@ -614,62 +618,90 @@ export class StockDataFetcher {
 
   /**
    * 获取股东结构数据(散户占比、机构占比等)
+   * 注意：此功能通过股东人数+十大股东数据计算得出
    * @param {string} stockCode - 股票代码
    * @returns {Promise<Object>} 股东结构数据
    */
   async getShareholderStructure(stockCode) {
     try {
-      const params = {
-        reportName: 'RPT_F10_EH_HOLDERSTYPE',
-        columns: 'ALL',
-        filter: `(SECUCODE="${stockCode}")`,
-        pageNumber: '1',
-        pageSize: '10',
-        sortTypes: '-1',
-        sortColumns: 'END_DATE',
-        source: 'WEB',
-        client: 'WEB'
-      };
-
-      const response = await axios.get(this.holderUrl, { params, timeout: 10000 });
+      // 获取股东人数数据
+      const holderData = await this.getShareholderCount(stockCode);
+      // 获取十大股东数据
+      const topHolders = await this.getTopTenHolders(stockCode);
       
-      if (response.data && response.data.result && response.data.result.data) {
-        const data = response.data.result.data;
+      if (holderData.shareholderData.length === 0) {
+        return { stockCode, shareholderStructure: [], message: '暂无股东结构数据' };
+      }
+
+      // 合并数据并计算散户占比
+      const structureData = holderData.shareholderData.map((item, index) => {
+        // 找到对应日期的十大股东数据
+        const topHolderRatio = topHolders.holders && index === 0 ? 
+          topHolders.holders.reduce((sum, h) => sum + (h.holdRatio || 0), 0) : 0;
+        
+        // 散户占比 = 100% - 十大股东合计持股比例
+        const retailRatio = Math.max(0, 100 - topHolderRatio);
         
         return {
-          stockCode: stockCode,
-          shareholderStructure: data.map(item => ({
-            endDate: item.END_DATE,
-            totalHolderNum: item.TOTAL_HOLDER_NUM,  // 总股东数
-            avgHoldingAmount: item.AVG_HOLD_AMT,  // 户均持股金额
-            // 散户数据
-            retailHolderNum: item.FREE_HOLDER_NUM,  // 散户数量
-            retailHolderRatio: item.FREE_HOLDER_NUM_RATIO,  // 散户占比(%)
-            retailHoldingAmount: item.FREE_HOLD_AMT,  // 散户持股市值
-            retailHoldingAmountRatio: item.FREE_HOLD_AMT_RATIO,  // 散户持股市值占比(%)
-            // 机构数据
-            institutionHolderNum: item.ORG_HOLDER_NUM,  // 机构数量
-            institutionHolderRatio: item.ORG_HOLDER_NUM_RATIO,  // 机构占比(%)
-            institutionHoldingAmount: item.ORG_HOLD_AMT,  // 机构持股市值
-            institutionHoldingAmountRatio: item.ORG_HOLD_AMT_RATIO,  // 机构持股市值占比(%)
-          })),
-          latestData: data[0] ? {
-            endDate: data[0].END_DATE,
-            retailHolderRatio: data[0].FREE_HOLDER_NUM_RATIO,  // 散户占比
-            retailHoldingAmountRatio: data[0].FREE_HOLD_AMT_RATIO,  // 散户市值占比
-            institutionHolderRatio: data[0].ORG_HOLDER_NUM_RATIO,
-            institutionHoldingAmountRatio: data[0].ORG_HOLD_AMT_RATIO,
-            totalHolderNum: data[0].TOTAL_HOLDER_NUM,
-            avgHoldingAmount: data[0].AVG_HOLD_AMT
-          } : null,
-          updateTime: new Date().toISOString()
+          endDate: item.endDate,
+          totalHolderNum: item.holderNum,
+          avgHoldingAmount: item.avgHoldingAmount,
+          holderNumChange: item.holderNumChange,
+          holderNumChangeRate: item.holderNumChangeRate,
+          // 股东集中度
+          concentration: item.totalMarketCap && item.holderNum ? 
+            ((item.totalMarketCap / item.holderNum) / item.avgHoldingAmount).toFixed(2) : null,
+          // 散户占比（基于十大股东持股比例计算）
+          retailHoldingRatio: retailRatio.toFixed(2),
+          // 十大股东合计持股比例
+          topTenHoldingRatio: topHolderRatio.toFixed(2)
         };
-      }
+      });
+
+      const latest = structureData[0] || {};
       
-      return { stockCode, shareholderStructure: [], message: '暂无股东结构数据' };
+      return {
+        stockCode: stockCode,
+        shareholderStructure: structureData,
+        latestData: {
+          endDate: latest.endDate,
+          totalHolderNum: latest.totalHolderNum,
+          avgHoldingAmount: latest.avgHoldingAmount,
+          // 散户占比（持股比例）
+          retailHoldingRatio: latest.retailHoldingRatio,
+          // 十大流通股东合计持股比例
+          topTenHoldingRatio: latest.topTenHoldingRatio,
+          holderNumChange: latest.holderNumChange,
+          holderNumChangeRate: latest.holderNumChangeRate
+        },
+        updateTime: new Date().toISOString(),
+        note: '散户占比 = 100% - 十大流通股东合计持股比例'
+      };
     } catch (error) {
       throw new Error(`获取股票 ${stockCode} 股东结构数据失败: ${error.message}`);
     }
+  }
+
+  /**
+   * 转换股票代码为SECUCODE格式
+   * @param {string} stockCode - 股票代码
+   * @returns {string} SECUCODE格式(如: 000001.SZ, 600000.SH)
+   */
+  convertToSecucode(stockCode) {
+    const code = stockCode.trim();
+    // 深圳市场
+    if (code.startsWith('000') || code.startsWith('002') || code.startsWith('300')) {
+      return `${code}.SZ`;
+    }
+    // 上海市场
+    if (code.startsWith('60') || code.startsWith('688')) {
+      return `${code}.SH`;
+    }
+    // 北交所
+    if (code.startsWith('8')) {
+      return `${code}.BJ`;
+    }
+    return `${code}.SH`; // 默认上海
   }
 
   /**
