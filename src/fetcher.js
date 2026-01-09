@@ -624,23 +624,54 @@ export class StockDataFetcher {
    */
   async getShareholderStructure(stockCode) {
     try {
-      // 获取股东人数数据
-      const holderData = await this.getShareholderCount(stockCode);
-      // 获取十大股东数据
-      const topHolders = await this.getTopTenHolders(stockCode);
+      const secucode = this.convertToSecucode(stockCode);
+      
+      // 并行获取股东人数和十大股东数据
+      const [holderData, topHoldersResponse] = await Promise.all([
+        this.getShareholderCount(stockCode),
+        // 直接请求获取更多历史数据
+        axios.get(this.holderUrl, {
+          params: {
+            reportName: 'RPT_F10_EH_FREEHOLDERS',
+            columns: 'ALL',
+            filter: `(SECUCODE="${secucode}")`,
+            pageNumber: '1',
+            pageSize: '50',  // 获取更多历史数据
+            sortTypes: '-1,-1',
+            sortColumns: 'END_DATE,HOLDER_RANK',
+            source: 'WEB',
+            client: 'WEB'
+          },
+          timeout: 10000
+        })
+      ]);
       
       if (holderData.shareholderData.length === 0) {
         return { stockCode, shareholderStructure: [], message: '暂无股东结构数据' };
       }
 
+      // 按日期分组十大股东数据
+      const topHoldersMap = new Map();
+      if (topHoldersResponse.data?.result?.data) {
+        topHoldersResponse.data.result.data.forEach(item => {
+          const date = item.END_DATE;
+          if (!topHoldersMap.has(date)) {
+            topHoldersMap.set(date, []);
+          }
+          topHoldersMap.get(date).push({
+            rank: item.HOLDER_RANK,
+            holderName: item.HOLDER_NAME,
+            holdRatio: item.FREE_HOLDNUM_RATIO || 0
+          });
+        });
+      }
+
       // 合并数据并计算散户占比
-      const structureData = holderData.shareholderData.map((item, index) => {
-        // 找到对应日期的十大股东数据
-        const topHolderRatio = topHolders.holders && index === 0 ? 
-          topHolders.holders.reduce((sum, h) => sum + (h.holdRatio || 0), 0) : 0;
-        
-        // 散户占比 = 100% - 十大股东合计持股比例
-        const retailRatio = Math.max(0, 100 - topHolderRatio);
+      const structureData = holderData.shareholderData.map(item => {
+        // 匹配对应日期的十大股东数据
+        const holders = topHoldersMap.get(item.endDate) || [];
+        const topTenRatio = holders.reduce((sum, h) => sum + (h.holdRatio || 0), 0);
+        const retailRatio = Math.max(0, 100 - topTenRatio);
         
         return {
           endDate: item.endDate,
@@ -648,13 +679,12 @@ export class StockDataFetcher {
           avgHoldingAmount: item.avgHoldingAmount,
           holderNumChange: item.holderNumChange,
           holderNumChangeRate: item.holderNumChangeRate,
-          // 股东集中度
-          concentration: item.totalMarketCap && item.holderNum ? 
-            ((item.totalMarketCap / item.holderNum) / item.avgHoldingAmount).toFixed(2) : null,
           // 散户占比（基于十大股东持股比例计算）
           retailHoldingRatio: retailRatio.toFixed(2),
           // 十大股东合计持股比例
-          topTenHoldingRatio: topHolderRatio.toFixed(2)
+          topTenHoldingRatio: topTenRatio.toFixed(2),
+          // 十大股东明细（仅最新期）
+          topTenHolders: holders.length > 0 ? holders : null
         };
       });
 
@@ -667,12 +697,11 @@ export class StockDataFetcher {
           endDate: latest.endDate,
           totalHolderNum: latest.totalHolderNum,
           avgHoldingAmount: latest.avgHoldingAmount,
-          // 散户占比（持股比例）
           retailHoldingRatio: latest.retailHoldingRatio,
-          // 十大流通股东合计持股比例
           topTenHoldingRatio: latest.topTenHoldingRatio,
           holderNumChange: latest.holderNumChange,
-          holderNumChangeRate: latest.holderNumChangeRate
+          holderNumChangeRate: latest.holderNumChangeRate,
+          topTenHolders: latest.topTenHolders
         },
         updateTime: new Date().toISOString(),
         note: '散户占比 = 100% - 十大流通股东合计持股比例'
