@@ -617,6 +617,64 @@ export class StockDataFetcher {
   }
 
   /**
+   * 获取按持仓市值排序的前十大股东
+   * @param {string} stockCode - 股票代码
+   * @returns {Promise<Object>} 前十大股东持仓数据
+   */
+  async getTopTenHoldings(stockCode) {
+    try {
+      const secucode = this.convertToSecucode(stockCode);
+      
+      const params = {
+        reportName: 'RPT_F10_EH_FREEHOLDERS',
+        columns: 'ALL',
+        filter: `(SECUCODE="${secucode}")`,
+        pageNumber: '1',
+        pageSize: '50',  // 获取更多数据以确保涵盖所有股东
+        sortTypes: '-1,-1',  // 按报告日期降序，再按持仓市值降序
+        sortColumns: 'END_DATE,HOLDER_MARKET_CAP',
+        source: 'WEB',
+        client: 'WEB'
+      };
+
+      const response = await axios.get(this.holderUrl, { params, timeout: 10000 });
+      
+      if (response.data && response.data.result && response.data.result.data) {
+        const data = response.data.result.data;
+        
+        // 按报告日期分组，获取最新报告期的数据并按持仓市值排序
+        const latestDate = data[0]?.END_DATE;
+        const latestHolders = data
+          .filter(item => item.END_DATE === latestDate)
+          .sort((a, b) => (b.HOLDER_MARKET_CAP || 0) - (a.HOLDER_MARKET_CAP || 0))
+          .slice(0, 10);
+        
+        return {
+          stockCode: stockCode,
+          reportDate: latestDate,
+          topTenHoldings: latestHolders.map((item, index) => ({
+            rank: index + 1,  // 重新排序排名
+            holderName: item.HOLDER_NAME,
+            holdNum: item.HOLD_NUM,
+            holdRatio: item.FREE_HOLDNUM_RATIO || item.HOLD_RATIO || 0,
+            holdMarketCap: item.HOLDER_MARKET_CAP, // 持仓市值
+            holdMarketCapRatio: item.HOLD_RATIO, // 持仓市值占总股本比例
+            holdChange: item.HOLD_NUM_CHANGE,
+            changeRatio: item.CHANGE_RATIO,
+            holderType: item.HOLDER_TYPE,
+            sharesType: item.SHARES_TYPE
+          })),
+          updateTime: new Date().toISOString()
+        };
+      }
+      
+      return { stockCode, topTenHoldings: [], message: '暂无前十大股东持仓数据' };
+    } catch (error) {
+      throw new Error(`获取股票 ${stockCode} 前十大股东持仓失败: ${error.message}`);
+    }
+  }
+
+  /**
    * 获取股东结构数据(散户占比、机构占比等)
    * 注意：此功能通过股东人数+十大股东数据计算得出
    * @param {string} stockCode - 股票代码

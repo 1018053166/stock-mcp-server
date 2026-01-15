@@ -263,6 +263,20 @@ class StockMCPServer {
             required: ['stockCode'],
           },
         },
+        {
+          name: 'get_top_ten_holdings',
+          description: '获取按持仓市值排序的前十大股东',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              stockCode: {
+                type: 'string',
+                description: '股票代码',
+              },
+            },
+            required: ['stockCode'],
+          },
+        },
       ],
     }));
 
@@ -313,6 +327,9 @@ class StockMCPServer {
 
           case 'get_shareholder_structure':
             return await this.handleGetShareholderStructure(args);
+
+          case 'get_top_ten_holdings':
+            return await this.handleGetTopTenHoldings(args);
 
           default:
             throw new Error(`未知工具: ${name}`);
@@ -556,6 +573,23 @@ class StockMCPServer {
   async handleGetShareholderStructure(args) {
     const { stockCode } = args;
     const data = await this.fetcher.getShareholderStructure(stockCode);
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify(data, null, 2),
+        },
+      ],
+    };
+  }
+
+  /**
+   * 处理获取前十大股东持仓
+   */
+  async handleGetTopTenHoldings(args) {
+    const { stockCode } = args;
+    const data = await this.fetcher.getTopTenHoldings(stockCode);
 
     return {
       content: [
